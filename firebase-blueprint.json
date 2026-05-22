@@ -1,0 +1,86 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with score and stats",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "wins": { "type": "integer" },
+        "losses": { "type": "integer" },
+        "draws": { "type": "integer" },
+        "points": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "wins", "losses", "draws", "points"]
+    },
+    "Room": {
+      "title": "Room",
+      "description": "Chess game room state",
+      "type": "object",
+      "properties": {
+        "roomId": { "type": "string" },
+        "status": { "type": "string" },
+        "whitePlayerId": { "type": "string" },
+        "whitePlayerName": { "type": "string" },
+        "whitePlayerEmail": { "type": "string" },
+        "blackPlayerId": { "type": "string" },
+        "blackPlayerName": { "type": "string" },
+        "blackPlayerEmail": { "type": "string" },
+        "winnerId": { "type": "string" },
+        "winnerName": { "type": "string" },
+        "fen": { "type": "string" },
+        "turn": { "type": "string" },
+        "lastMove": { "type": "object" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["roomId", "status", "fen", "turn", "createdAt", "updatedAt"]
+    },
+    "Spectator": {
+      "title": "Spectator",
+      "description": "A user spectating a chess match",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "joinedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "joinedAt"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "Chat or spectator message in a room",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "text": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "userName", "text", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Stores individual user profile and statistics"
+    },
+    "/rooms/{roomId}": {
+      "schema": "Room",
+      "description": "Represents a single chess match room"
+    },
+    "/rooms/{roomId}/spectators/{spectatorId}": {
+      "schema": "Spectator",
+      "description": "List of active spectators watching the room"
+    },
+    "/rooms/{roomId}/messages/{messageId}": {
+      "schema": "Message",
+      "description": "Chat message log within the room"
+    }
+  }
+}

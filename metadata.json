@@ -1,0 +1,10 @@
+{
+  "name": "3D Chess Online",
+  "description": "لعبة شطرنج ثلاثية الأبعاد احترافية مع ميزة الغرف الخاصة واللعب أونلاين عبر الويب، الذكاء الاصطناعي والمؤثرات الصوتية والمشاهدين.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

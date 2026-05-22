@@ -1,0 +1,147 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Catch-all safety gate
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper Primitives
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Entity validation functions
+    function isValidUser(data) {
+      return data.uid is string && data.uid.size() <= 128 &&
+             data.email is string && data.email.size() <= 200 &&
+             data.displayName is string && data.displayName.size() <= 200 &&
+             data.photoURL is string && data.photoURL.size() <= 1000 &&
+             data.wins is int && data.wins >= 0 &&
+             data.losses is int && data.losses >= 0 &&
+             data.draws is int && data.draws >= 0 &&
+             data.points is int && data.points >= 0;
+    }
+
+    function isValidRoom(data) {
+      return data.roomId is string && data.roomId.size() <= 128 &&
+             data.status is string && (data.status == "waiting" || data.status == "playing" || data.status == "finished" || data.status == "draw") &&
+             data.fen is string && data.fen.size() <= 250 &&
+             data.turn is string && (data.turn == "w" || data.turn == "b");
+    }
+
+    function isValidSpectator(data) {
+      return data.uid is string && data.uid.size() <= 128 &&
+             data.email is string && data.email.size() <= 200 &&
+             data.displayName is string && data.displayName.size() <= 200;
+    }
+
+    function isValidMessage(data) {
+      return data.userId is string && data.userId.size() <= 128 &&
+             data.userName is string && data.userName.size() <= 200 &&
+             data.text is string && data.text.size() <= 500;
+    }
+
+    // Match statements for each collection
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isOwner(userId) &&
+                       isValidUser(incoming()) &&
+                       incoming().uid == request.auth.uid &&
+                       incoming().wins == 0 &&
+                       incoming().losses == 0 &&
+                       incoming().draws == 0 &&
+                       incoming().points == 0;
+      allow update: if isOwner(userId) &&
+                       isValidUser(incoming()) &&
+                       incoming().uid == request.auth.uid &&
+                       incoming().email == existing().email &&
+                       // Allow incrementing stats
+                       incoming().wins >= existing().wins &&
+                       incoming().losses >= existing().losses &&
+                       incoming().draws >= existing().draws &&
+                       incoming().points >= existing().points;
+    }
+
+    match /rooms/{roomId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() &&
+                       isValidId(roomId) &&
+                       isValidRoom(incoming()) &&
+                       incoming().roomId == roomId &&
+                       incoming().status == "waiting";
+
+      allow update: if isSignedIn() &&
+                       isValidId(roomId) &&
+                       isValidRoom(incoming()) &&
+                       incoming().roomId == roomId &&
+                       // Prevent modifying a game that has ended (Terminal State Locking)
+                       existing().status != "finished" &&
+                       existing().status != "draw" &&
+                       (
+                         // Action: Join Game (waiting -> playing)
+                         (existing().status == "waiting" && incoming().status == "playing" &&
+                          incoming().diff(existing()).affectedKeys().hasOnly([
+                            'whitePlayerId', 'whitePlayerName', 'whitePlayerEmail',
+                            'blackPlayerId', 'blackPlayerName', 'blackPlayerEmail',
+                            'status', 'updatedAt'
+                          ])) ||
+                         
+                         // Action: Play Move (playing -> playing / finished / draw)
+                         (existing().status == "playing" &&
+                          // Validate move author (must be the current player based on turn)
+                          ((existing().turn == "w" && existing().whitePlayerId == request.auth.uid) ||
+                           (existing().turn == "b" && existing().blackPlayerId == request.auth.uid)) &&
+                          incoming().diff(existing()).affectedKeys().hasAny([
+                             'fen', 'turn', 'lastMove', 'status', 'winnerId', 'winnerName', 'updatedAt'
+                          ])) ||
+
+                         // Action: Resign/Draw Agreement/Forfeit/Leave
+                         (existing().status == "playing" &&
+                          (request.auth.uid == existing().whitePlayerId || request.auth.uid == existing().blackPlayerId) &&
+                          incoming().diff(existing()).affectedKeys().hasAny([
+                             'status', 'winnerId', 'winnerName', 'updatedAt'
+                          ]))
+                       );
+      
+      allow delete: if false;
+
+      // Subcollections within Rooms
+      match /spectators/{spectatorId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn() &&
+                         isOwner(spectatorId) &&
+                         isValidSpectator(incoming());
+        allow update: if isSignedIn() &&
+                         isOwner(spectatorId) &&
+                         isValidSpectator(incoming());
+        allow delete: if isSignedIn() && isOwner(spectatorId);
+      }
+
+      match /messages/{messageId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn() &&
+                         isValidMessage(incoming()) &&
+                         incoming().userId == request.auth.uid;
+        allow update, delete: if false;
+      }
+    }
+  }
+}
