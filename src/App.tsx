@@ -18,7 +18,9 @@ import {
   MessageCircle,
   Trophy,
   Compass,
-  ArrowRightLeft
+  ArrowRightLeft,
+  Smartphone,
+  Download
 } from 'lucide-react';
 import { db, handleFirestoreError, OperationType } from './firebase';
 import { 
@@ -37,6 +39,7 @@ import { useFirebase, FirebaseProvider } from './context/FirebaseContext';
 import ChessBoard3D, { squareToCoords } from './components/ChessBoard3D';
 import ChessChat from './components/ChessChat';
 import Leaderboard from './components/Leaderboard';
+import GoogleAd from './components/GoogleAd';
 import { getBestMove } from './utils/ai';
 import { audio } from './utils/audio';
 import { ChessRoom, GameMode, AIDifficulty, LastMove } from './types';
@@ -87,6 +90,50 @@ function ChessAppContent() {
   // References
   const boardSyncRef = useRef<boolean>(false);
   const clockIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // PWA Install Prompt State
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [showInstallBtn, setShowInstallBtn] = useState<boolean>(true); // default true so they always have setup instructions
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setShowInstallBtn(true);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    // If app loads inside standalone android or ios mode
+    if (window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone) {
+      setShowInstallBtn(false);
+    }
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
+
+  const handleInstallAppClick = async () => {
+    if (!deferredPrompt) {
+      triggerToast('تطبيقات الويب التقدمية مدعومة بالكامل! لتثبيت اللعبة يدوياً على أندرويد: انقر على النقاط الثلاثة المتصفح ثم "تثبيت التطبيق" أو "إضافة إلى الشاشة الرئيسية" 📲');
+      return;
+    }
+    try {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        triggerToast('رائع! تم بدء هبوط وتثبيت التطبيق على هاتفك بنجاح 🎉');
+        setShowInstallBtn(false);
+      } else {
+        triggerToast('تم إلغاء تثبيت التطبيق.');
+      }
+    } catch (e) {
+      console.warn('Install prompt error:', e);
+      triggerToast('بإمكانك دائماً التثبيت يدوياً عبر خيارات متصفح هاتفك كروم!');
+    }
+    setDeferredPrompt(null);
+  };
 
   // Play entry chime on load
   useEffect(() => {
@@ -730,7 +777,7 @@ function ChessAppContent() {
         <main className="flex-grow p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 max-w-7xl mx-auto w-full">
           
           {/* Active 3D Board Canvas (8 cols layout) */}
-          <section className="lg:col-span-8 flex flex-col gap-4 h-full min-h-[420px] lg:min-h-[580px]">
+          <section className="lg:col-span-8 flex flex-col gap-4 h-full w-full min-h-[280px] sm:min-h-[400px] lg:min-h-[580px] max-w-full overflow-hidden">
             <div className="flex justify-between items-center bg-slate-900/50 p-3 rounded-xl border border-slate-900">
               <button
                 id="btn_exit_game"
@@ -771,7 +818,7 @@ function ChessAppContent() {
             </div>
 
             {/* Render 3D Engine canvas */}
-            <div className="flex-grow min-h-[450px]">
+            <div className="flex-grow min-h-[250px] sm:min-h-[350px] md:min-h-[450px] aspect-square lg:aspect-auto">
               <ChessBoard3D
                 fen={fen}
                 onMove={handlePieceMove}
@@ -893,6 +940,9 @@ function ChessAppContent() {
                   </button>
                 )}
               </div>
+
+              {/* Responsive Google Ads unit */}
+              <GoogleAd className="mt-4" />
             </div>
 
             {/* Chat Module */}
@@ -911,7 +961,7 @@ function ChessAppContent() {
         <main className="flex-grow max-w-5xl mx-auto w-full p-6 space-y-8 animate-fade-in">
           
           {/* Main Display Title banner */}
-          <section className="text-center py-8 space-y-3 max-w-xl mx-auto">
+          <section className="text-center py-6 space-y-3 max-w-xl mx-auto">
             <h1 className="text-3xl md:text-4.5xl font-extrabold tracking-tight text-slate-100 uppercase">
               تنافس، خطط، وانتصر في مصفوفة الشطرنج
             </h1>
@@ -919,6 +969,35 @@ function ChessAppContent() {
               واجهة شطرنج احترافية ثلاثية الأبعاد تفاعلية بالكامل. العب بشكل مباشر مع الأصدقاء أونلاين عبر غرف تشفير الكود والمشاهدين، أو تحدى المحرك الذكي محلياً.
             </p>
           </section>
+
+          {/* PWA Mobile App Promo Card */}
+          {showInstallBtn && (
+            <div id="btn_pwa_prompt_main" className="max-w-xl mx-auto p-4 md:p-5 rounded-2xl bg-gradient-to-tr from-blue-950/45 via-slate-900 to-amber-950/20 border border-amber-500/10 shadow-xl flex flex-col sm:flex-row items-center justify-between gap-4 transition-all hover:border-amber-500/25">
+              <div className="flex items-center gap-3.5 text-right">
+                <div className="p-3 bg-amber-500/10 rounded-xl text-amber-500 shadow-md shrink-0">
+                  <Smartphone className="w-6 h-6 animate-pulse" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-slate-100 flex items-center gap-1.5 flex-wrap">
+                    تثبيت كـ تطبيق أندرويد حقيقي 📱
+                    <span className="text-[9px] bg-emerald-500/15 text-emerald-400 px-2.5 py-0.5 rounded-full font-bold">جاهز للتثبيت</span>
+                  </h4>
+                  <p className="text-xs text-slate-400 leading-relaxed font-sans mt-0.5">
+                    احصل على تجربة لعب شطرنج ثلاثي الأبعاد كاملة وبدون إعلانات منبثقة مزعجة أو مشاكل توافق، مع تشغيل فوري من شاشتك الرئيسية!
+                  </p>
+                </div>
+              </div>
+
+              <button
+                id="btn_pwa_actions"
+                onClick={handleInstallAppClick}
+                className="w-full sm:w-auto shrink-0 px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-lg transition-transform active:scale-98"
+              >
+                <Download className="w-4 h-4" />
+                تثبيت على الهاتف الآن
+              </button>
+            </div>
+          )}
 
           {/* Quick tab filters on mobile */}
           <div className="flex md:hidden justify-center bg-slate-900 border border-slate-800 p-1.5 rounded-xl gap-1">
@@ -1155,6 +1234,9 @@ function ChessAppContent() {
 
                   </div>
                 </div>
+
+                {/* Google Ad banner in Lobby for premium Adsense / Simulated promotions */}
+                <GoogleAd className="mt-6" />
 
               </div>
 

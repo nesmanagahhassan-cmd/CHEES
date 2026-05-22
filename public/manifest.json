@@ -1,0 +1,33 @@
+{
+  "name": "غرفة الشطرنج ثلاثية الأبعاد",
+  "short_name": "الشطرنج ثلاثي الأبعاد",
+  "description": "لعبة شطرنج ثلاثية الأبعاد احترافية تفاعلية أونلاين ومحلياً",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#0f172a",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon-512.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["utilities", "games"],
+  "shortcuts": [
+    {
+      "name": "بدء اللعب الفردي",
+      "short_name": "لعب فردي",
+      "url": "/?mode=solo",
+      "icons": [{ "src": "/icon-512.png", "sizes": "192x192" }]
+    }
+  ]
+}

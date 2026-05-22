@@ -218,161 +218,378 @@ export default function ChessBoard3D({
       const pGroup = new THREE.Group();
 
       const baseMat = new THREE.MeshPhysicalMaterial({
-        color: color === 'w' ? '#f8fafc' : '#0f172a',
-        roughness: color === 'w' ? 0.12 : 0.2,
-        metalness: color === 'w' ? 0.15 : 0.45,
-        clearcoat: 0.6,
-        clearcoatRoughness: 0.1,
+        color: color === 'w' ? '#fafaf5' : '#1e1c19', // Elegant Warm Ivory and Rich Ebony Charcoal
+        roughness: color === 'w' ? 0.08 : 0.12,
+        metalness: color === 'w' ? 0.05 : 0.25,
+        clearcoat: 0.9,
+        clearcoatRoughness: 0.05,
       });
 
-      // Simple golden band highlighting details
+      // Luxurious golden trims highlighting majestic curves
       const metalBandMat = new THREE.MeshStandardMaterial({
-        color: color === 'w' ? '#d97706' : '#f59e0b',
-        roughness: 0.1,
-        metalness: 0.9,
+        color: color === 'w' ? '#b45309' : '#fbbf24', // Amber gold and Bright yellow gold
+        roughness: 0.08,
+        metalness: 0.95,
       });
 
-      // Constructive solid parts depending on TYPE
-      // Base cylinder for all pieces
-      const baseGeo = new THREE.CylinderGeometry(0.35, 0.42, 0.15, 16);
+      // Slit or negative spacer material for the classic bishop mitre cut
+      const cutoutMat = new THREE.MeshBasicMaterial({
+        color: color === 'w' ? '#78716c' : '#030712',
+      });
+
+      // Proportional dimensions for realistic Staunton Chess set
+      let rTop = 0.26;
+      let rBot = 0.34;
+      let bHeight = 0.12;
+      let colRadius = 0.28;
+
+      if (type === 'k') {
+        rTop = 0.34; rBot = 0.42; bHeight = 0.15; colRadius = 0.37;
+      } else if (type === 'q') {
+        rTop = 0.32; rBot = 0.40; bHeight = 0.14; colRadius = 0.34;
+      } else if (type === 'b') {
+        rTop = 0.26; rBot = 0.34; bHeight = 0.13; colRadius = 0.29;
+      } else if (type === 'n') {
+        rTop = 0.26; rBot = 0.34; bHeight = 0.13; colRadius = 0.29;
+      } else if (type === 'r') {
+        rTop = 0.26; rBot = 0.34; bHeight = 0.13; colRadius = 0.29;
+      } else if (type === 'p') {
+        rTop = 0.20; rBot = 0.28; bHeight = 0.10; colRadius = 0.22;
+      }
+
+      // 1. Bottom master base (slanted with chamfer)
+      const baseGeo = new THREE.CylinderGeometry(rTop, rBot, bHeight, 20);
       const basePiece = new THREE.Mesh(baseGeo, baseMat);
-      basePiece.position.y = 0.075;
+      basePiece.position.y = bHeight / 2;
       basePiece.castShadow = true;
       basePiece.receiveShadow = true;
       pGroup.add(basePiece);
 
-      const collarGeo = new THREE.CylinderGeometry(0.38, 0.38, 0.04, 16);
+      // 2. Middle decorative bead/fillet
+      const stepGeo = new THREE.CylinderGeometry(rTop - 0.02, rTop, 0.045, 20);
+      const baseStep = new THREE.Mesh(stepGeo, baseMat);
+      baseStep.position.y = bHeight + 0.022;
+      baseStep.castShadow = true;
+      baseStep.receiveShadow = true;
+      pGroup.add(baseStep);
+
+      // 3. Shining gold accent collar separating base from stem
+      const collarY = bHeight + 0.045 + 0.02;
+      const collarGeo = new THREE.CylinderGeometry(colRadius, colRadius, 0.035, 20);
       const collar = new THREE.Mesh(collarGeo, metalBandMat);
-      collar.position.y = 0.16;
+      collar.position.y = collarY;
+      collar.castShadow = true;
+      collar.receiveShadow = true;
       pGroup.add(collar);
 
       switch (type) {
         case 'p': {
-          // Pawn: lower torso cone + top sphere head
-          const stemGeo = new THREE.CylinderGeometry(0.18, 0.3, 0.45, 12);
+          // Pawn: Elegant curved lower torso cone + top neck band + classic sphere head
+          const stemGeo = new THREE.CylinderGeometry(0.12, 0.20, 0.38, 16);
           const stem = new THREE.Mesh(stemGeo, baseMat);
-          stem.position.y = 0.385;
+          stem.position.y = collarY + 0.19; // center at Y=0.37
           stem.castShadow = true;
+          stem.receiveShadow = true;
           pGroup.add(stem);
 
-          const headGeo = new THREE.SphereGeometry(0.24, 16, 16);
+          // Top Neck Band
+          const neckBandGeo = new THREE.CylinderGeometry(0.16, 0.16, 0.04, 16);
+          const neckBand = new THREE.Mesh(neckBandGeo, baseMat);
+          neckBand.position.y = collarY + 0.38; // Y=0.56
+          neckBand.castShadow = true;
+          pGroup.add(neckBand);
+
+          // Head pedestal
+          const pedGeo = new THREE.CylinderGeometry(0.15, 0.15, 0.04, 16);
+          const ped = new THREE.Mesh(pedGeo, metalBandMat);
+          ped.position.y = collarY + 0.41; // Y=0.59
+          ped.castShadow = true;
+          pGroup.add(ped);
+
+          // Beautiful glossy head sphere
+          const headGeo = new THREE.SphereGeometry(0.20, 24, 24);
           const head = new THREE.Mesh(headGeo, baseMat);
-          head.position.y = 0.68;
+          head.position.y = collarY + 0.58; // Y=0.76
           head.castShadow = true;
+          head.receiveShadow = true;
           pGroup.add(head);
           break;
         }
+
         case 'r': {
-          // Rook: castle tower column + top crown
-          const columnGeo = new THREE.CylinderGeometry(0.26, 0.32, 0.6, 16);
+          // Rook: Castle tower column tapering thin at top + top flared capital + crenellated crown
+          const columnGeo = new THREE.CylinderGeometry(0.19, 0.24, 0.50, 20);
           const column = new THREE.Mesh(columnGeo, baseMat);
-          column.position.y = 0.45;
+          column.position.y = collarY + 0.25; // center at Y=0.45
           column.castShadow = true;
+          column.receiveShadow = true;
           pGroup.add(column);
 
-          const crownGeo = new THREE.CylinderGeometry(0.33, 0.28, 0.25, 12);
+          // Crown ring flare
+          const capGeo = new THREE.CylinderGeometry(0.28, 0.21, 0.06, 20);
+          const capital = new THREE.Mesh(capGeo, baseMat);
+          capital.position.y = collarY + 0.53; // Y=0.73
+          capital.castShadow = true;
+          pGroup.add(capital);
+
+          // Gold border below battlements
+          const goldCapRingGeo = new THREE.CylinderGeometry(0.285, 0.285, 0.02, 20);
+          const goldCapRing = new THREE.Mesh(goldCapRingGeo, metalBandMat);
+          goldCapRing.position.y = collarY + 0.56; // Y=0.76
+          pGroup.add(goldCapRing);
+
+          // Castle Cup crown
+          const crownGeo = new THREE.CylinderGeometry(0.28, 0.28, 0.16, 20);
           const crown = new THREE.Mesh(crownGeo, baseMat);
-          crown.position.y = 0.8;
+          crown.position.y = collarY + 0.65; // Y=0.85
           crown.castShadow = true;
+          crown.receiveShadow = true;
           pGroup.add(crown);
+
+          // Physical battlements/crenellations: 4 small rectangular columns on outer rim
+          const cY = collarY + 0.73; // release Y=0.93
+          const teethGeo = new THREE.BoxGeometry(0.08, 0.07, 0.08);
+
+          // Front teeth
+          const toothF = new THREE.Mesh(teethGeo, baseMat);
+          toothF.position.set(0, cY, 0.21);
+          toothF.castShadow = true;
+          pGroup.add(toothF);
+
+          // Back teeth
+          const toothB = new THREE.Mesh(teethGeo, baseMat);
+          toothB.position.set(0, cY, -0.21);
+          toothB.castShadow = true;
+          pGroup.add(toothB);
+
+          // Left teeth
+          const toothL = new THREE.Mesh(teethGeo, baseMat);
+          toothL.position.set(-0.21, cY, 0);
+          toothL.castShadow = true;
+          pGroup.add(toothL);
+
+          // Right teeth
+          const toothR = new THREE.Mesh(teethGeo, baseMat);
+          toothR.position.set(0.21, cY, 0);
+          toothR.castShadow = true;
+          pGroup.add(toothR);
           break;
         }
+
         case 'n': {
-          // Knight: stylized elegant block horse silhouette
-          const neckGeo = new THREE.CylinderGeometry(0.16, 0.28, 0.4, 12);
-          const neck = new THREE.Mesh(neckGeo, baseMat);
-          neck.position.y = 0.35;
-          neck.rotation.x = 0.25;
-          neck.castShadow = true;
-          pGroup.add(neck);
+          // Knight: Exquisite organic handcrafted-looking horse silhouette (Staunton style)
+          // Tilted arched chest cylinder
+          const chestGeo = new THREE.CylinderGeometry(0.16, 0.25, 0.44, 16);
+          const chest = new THREE.Mesh(chestGeo, baseMat);
+          chest.position.set(0, collarY + 0.20, -0.04);
+          chest.rotation.x = -0.12; // curve head forward
+          chest.castShadow = true;
+          chest.receiveShadow = true;
+          pGroup.add(chest);
 
-          const headGeo = new THREE.BoxGeometry(0.25, 0.38, 0.45);
-          const head = new THREE.Mesh(headGeo, baseMat);
-          head.position.set(0, 0.65, 0.1);
-          head.rotation.x = -0.28;
-          head.castShadow = true;
-          pGroup.add(head);
+          // Muzzle snout pointing downwards elegantly forward
+          const snoutGeo = new THREE.CylinderGeometry(0.10, 0.07, 0.32, 12);
+          const snout = new THREE.Mesh(snoutGeo, baseMat);
+          snout.position.set(0, collarY + 0.45, 0.12);
+          snout.rotation.x = 0.62; // tilt down
+          snout.castShadow = true;
+          pGroup.add(snout);
 
-          // EARS
-          const earGeo = new THREE.ConeGeometry(0.06, 0.15, 4);
+          // Circular horse cheeks
+          const cheekGeo = new THREE.SphereGeometry(0.13, 16, 16);
+          const cheekL = new THREE.Mesh(cheekGeo, baseMat);
+          cheekL.scale.set(1.0, 1.0, 0.35); // flatten to disk
+          cheekL.position.set(-0.10, collarY + 0.36, 0.02);
+          cheekL.castShadow = true;
+          pGroup.add(cheekL);
+
+          const cheekR = cheekL.clone();
+          cheekR.position.x = 0.10;
+          pGroup.add(cheekR);
+
+          // Points representing high horse ears
+          const earGeo = new THREE.ConeGeometry(0.04, 0.14, 8);
           const earL = new THREE.Mesh(earGeo, baseMat);
-          earL.position.set(-0.08, 0.85, -0.03);
+          earL.position.set(-0.07, collarY + 0.58, -0.05);
+          earL.rotation.z = 0.1;
+          earL.rotation.x = -0.15;
+          earL.castShadow = true;
           pGroup.add(earL);
 
           const earR = earL.clone();
-          earR.position.x = 0.08;
+          earR.position.x = 0.07;
+          earR.rotation.z = -0.1;
           pGroup.add(earR);
+
+          // Distinctive horse mane on back of neck
+          const maneGeo = new THREE.BoxGeometry(0.035, 0.30, 0.10);
+          const mane = new THREE.Mesh(maneGeo, metalBandMat);
+          mane.position.set(0, collarY + 0.24, -0.14);
+          mane.rotation.x = -0.12;
+          mane.castShadow = true;
+          pGroup.add(mane);
+
+          // Little gold rein detail to look extremely premium
+          const reinGeo = new THREE.TorusGeometry(0.15, 0.015, 6, 16, Math.PI);
+          const rein = new THREE.Mesh(reinGeo, metalBandMat);
+          rein.position.set(0, collarY + 0.42, 0.08);
+          rein.rotation.y = Math.PI / 2;
+          rein.rotation.x = 0.3;
+          pGroup.add(rein);
           break;
         }
+
         case 'b': {
-          // Bishop: mitre cone + golden crown bead
-          const columnGeo = new THREE.CylinderGeometry(0.2, 0.28, 0.65, 12);
+          // Bishop: Slender stems + decorative spacer ring + pointed bishop mitre with visual slit
+          const columnGeo = new THREE.CylinderGeometry(0.12, 0.21, 0.55, 16);
           const column = new THREE.Mesh(columnGeo, baseMat);
-          column.position.y = 0.48;
+          column.position.y = collarY + 0.275; // center at Y=0.475
           column.castShadow = true;
+          column.receiveShadow = true;
           pGroup.add(column);
 
-          const headGeo = new THREE.SphereGeometry(0.25, 16, 16);
-          // Scale sphere vertically to look like bishop mitre
-          const head = new THREE.Mesh(headGeo, baseMat);
-          head.scale.set(1, 1.4, 1);
-          head.position.y = 0.88;
-          head.castShadow = true;
-          pGroup.add(head);
+          // Multi-layer collars separating the head mitre
+          const neckRing1Geo = new THREE.CylinderGeometry(0.18, 0.18, 0.04, 16);
+          const neckRing1 = new THREE.Mesh(neckRing1Geo, baseMat);
+          neckRing1.position.y = collarY + 0.57; // Y=0.77
+          neckRing1.castShadow = true;
+          pGroup.add(neckRing1);
 
-          const cruzGeo = new THREE.SphereGeometry(0.06, 8, 8);
-          const cruz = new THREE.Mesh(cruzGeo, metalBandMat);
-          cruz.position.y = 1.25;
-          pGroup.add(cruz);
+          const goldRingGeo = new THREE.CylinderGeometry(0.19, 0.19, 0.02, 16);
+          const goldRing = new THREE.Mesh(goldRingGeo, metalBandMat);
+          goldRing.position.y = collarY + 0.60; // Y=0.80
+          pGroup.add(goldRing);
+
+          // Pointed teardrop Bishop mitre sphere scaled vertically
+          const mitreGeo = new THREE.SphereGeometry(0.195, 24, 24);
+          const mitre = new THREE.Mesh(mitreGeo, baseMat);
+          mitre.scale.set(1.0, 1.45, 1.0);
+          mitre.position.y = collarY + 0.78; // Y=0.98
+          mitre.castShadow = true;
+          mitre.receiveShadow = true;
+          pGroup.add(mitre);
+
+          // Sliced bishop slit: dark cutout box overlay to construct authentic bishop cut
+          const slitBoxGeo = new THREE.BoxGeometry(0.022, 0.25, 0.15);
+          const slitBox = new THREE.Mesh(slitBoxGeo, cutoutMat);
+          slitBox.position.set(0.07, collarY + 0.82, 0.04);
+          slitBox.rotation.z = Math.PI / 5; // slant angle
+          slitBox.rotation.y = Math.PI / 6;
+          pGroup.add(slitBox);
+
+          // Golden finial globule at the very top tip of the mitre
+          const topGlobuleGeo = new THREE.SphereGeometry(0.048, 12, 12);
+          const topGlobule = new THREE.Mesh(topGlobuleGeo, metalBandMat);
+          topGlobule.position.y = collarY + 1.05; // Y=1.25
+          topGlobule.castShadow = true;
+          pGroup.add(topGlobule);
           break;
         }
+
         case 'q': {
-          // Queen: flaring crown torso + coronet beads
-          const columnGeo = new THREE.CylinderGeometry(0.18, 0.32, 0.85, 16);
+          // Queen: Tall waisted stem + gold ornamental capital + flared crenellated crown + top orb
+          const columnGeo = new THREE.CylinderGeometry(0.13, 0.24, 0.70, 20);
           const column = new THREE.Mesh(columnGeo, baseMat);
-          column.position.y = 0.58;
+          column.position.y = collarY + 0.35; // center at Y=0.55
           column.castShadow = true;
+          column.receiveShadow = true;
           pGroup.add(column);
 
-          const crownGeo = new THREE.CylinderGeometry(0.36, 0.22, 0.35, 16);
-          const crown = new THREE.Mesh(crownGeo, baseMat);
-          crown.position.y = 1.05;
-          crown.castShadow = true;
-          pGroup.add(crown);
+          // Imperial Queen neck ring
+          const neckGeo = new THREE.CylinderGeometry(0.23, 0.18, 0.05, 20);
+          const neck = new THREE.Mesh(neckGeo, baseMat);
+          neck.position.y = collarY + 0.72; // Y=0.92
+          neck.castShadow = true;
+          pGroup.add(neck);
 
-          const orbGeo = new THREE.SphereGeometry(0.07, 12, 12);
-          const orb = new THREE.Mesh(orbGeo, metalBandMat);
-          orb.position.y = 1.25;
-          pGroup.add(orb);
+          const goldNeckGeo = new THREE.CylinderGeometry(0.24, 0.24, 0.025, 20);
+          const goldNeck = new THREE.Mesh(goldNeckGeo, metalBandMat);
+          goldNeck.position.y = collarY + 0.75; // Y=0.95
+          goldNeck.castShadow = true;
+          pGroup.add(goldNeck);
+
+          // Flared crown / coronet cup
+          const coronetGeo = new THREE.CylinderGeometry(0.27, 0.19, 0.20, 20);
+          const coronet = new THREE.Mesh(coronetGeo, baseMat);
+          coronet.position.y = collarY + 0.86; // Y=1.06
+          coronet.castShadow = true;
+          coronet.receiveShadow = true;
+          pGroup.add(coronet);
+
+          // Exquisite coronet crown beads (8 surrounding golden jewels typical for royalty)
+          const beadGeo = new THREE.SphereGeometry(0.028, 8, 8);
+          const bRadius = 0.24;
+          const bY = collarY + 0.96; // Y=1.16
+
+          for (let i = 0; i < 8; i++) {
+            const angle = (i * Math.PI) / 4;
+            const bead = new THREE.Mesh(beadGeo, metalBandMat);
+            bead.position.set(Math.cos(angle) * bRadius, bY, Math.sin(angle) * bRadius);
+            bead.castShadow = true;
+            pGroup.add(bead);
+          }
+
+          // Central royal orb at the top
+          const centralOrbGeo = new THREE.SphereGeometry(0.06, 12, 12);
+          const centralOrb = new THREE.Mesh(centralOrbGeo, metalBandMat);
+          centralOrb.position.y = collarY + 0.97; // Y=1.17
+          centralOrb.castShadow = true;
+          pGroup.add(centralOrb);
           break;
         }
+
         case 'k': {
-          // King: tallest model + solid crown cap + cross topper
-          const columnGeo = new THREE.CylinderGeometry(0.22, 0.34, 0.95, 16);
+          // King: Tall, heavy column + sovereign capital + imperial crown pedestal + golden cross
+          const columnGeo = new THREE.CylinderGeometry(0.15, 0.27, 0.80, 20);
           const column = new THREE.Mesh(columnGeo, baseMat);
-          column.position.y = 0.62;
+          column.position.y = collarY + 0.40; // center Y=0.60
           column.castShadow = true;
+          column.receiveShadow = true;
           pGroup.add(column);
 
-          const crownGeo = new THREE.BoxGeometry(0.35, 0.18, 0.35);
-          const crown = new THREE.Mesh(crownGeo, baseMat);
-          crown.position.y = 1.15;
-          crown.rotation.y = Math.PI / 4;
-          crown.castShadow = true;
-          pGroup.add(crown);
+          // Majestic collar
+          const collarKingGeo = new THREE.CylinderGeometry(0.26, 0.20, 0.06, 20);
+          const collarKing = new THREE.Mesh(collarKingGeo, baseMat);
+          collarKing.position.y = collarY + 0.83; // Y=1.03
+          collarKing.castShadow = true;
+          pGroup.add(collarKing);
 
-          // Dynamic cross model
-          const crossBarH = new THREE.BoxGeometry(0.2, 0.05, 0.05);
-          const crossBarV = new THREE.BoxGeometry(0.05, 0.22, 0.05);
-          const cross = new THREE.Group();
-          const p1 = new THREE.Mesh(crossBarH, metalBandMat);
-          p1.position.y = 0.12;
-          const p2 = new THREE.Mesh(crossBarV, metalBandMat);
-          p2.position.y = 0.12;
-          cross.add(p1);
-          cross.add(p2);
-          cross.position.y = 1.18;
-          pGroup.add(cross);
+          const goldCollarKing = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.27, 0.025, 20), metalBandMat);
+          goldCollarKing.position.y = collarY + 0.86; // Y=1.06
+          goldCollarKing.castShadow = true;
+          pGroup.add(goldCollarKing);
+
+          // Pedestal dome representing monarch crown
+          const domeGeo = new THREE.SphereGeometry(0.21, 16, 16);
+          const dome = new THREE.Mesh(domeGeo, baseMat);
+          dome.scale.set(1.0, 0.70, 1.0); // flat dome
+          dome.position.y = collarY + 0.94; // Y=1.14
+          dome.castShadow = true;
+          pGroup.add(dome);
+
+          // Slanted imperial crown rim cap
+          const capGeo = new THREE.CylinderGeometry(0.23, 0.21, 0.10, 20);
+          const cap = new THREE.Mesh(capGeo, baseMat);
+          cap.position.y = collarY + 1.04; // Y=1.24
+          cap.castShadow = true;
+          pGroup.add(cap);
+
+          // Sovereign Gold Cross Topper standing tall on top of the dome
+          const crossGroup = new THREE.Group();
+          crossGroup.position.set(0, collarY + 1.18, 0); // Y=1.38
+
+          const vBarGeo = new THREE.BoxGeometry(0.045, 0.18, 0.045);
+          const vBar = new THREE.Mesh(vBarGeo, metalBandMat);
+          vBar.castShadow = true;
+          crossGroup.add(vBar);
+
+          const hBarGeo = new THREE.BoxGeometry(0.14, 0.045, 0.045);
+          const hBar = new THREE.Mesh(hBarGeo, metalBandMat);
+          hBar.position.y = 0.04; // vertically centered offset
+          hBar.castShadow = true;
+          crossGroup.add(hBar);
+
+          pGroup.add(crossGroup);
           break;
         }
       }
@@ -423,7 +640,8 @@ export default function ChessBoard3D({
 
             // Compute board offsets
             const xPos = (colIdx - 3.5) * 1.1;
-            const zPos = (3.5 - r) * 1.1; // row 0 ranks 8 at top (Z = -3.85)
+            const logicalRow = 7 - r;
+            const zPos = (3.5 - logicalRow) * 1.1; // row 0 ranks 8 at top (Z = -3.85)
             pMeshGroup.position.x = xPos;
             pMeshGroup.position.z = zPos;
 
@@ -524,76 +742,113 @@ export default function ChessBoard3D({
       return null;
     };
 
-    // Register Pointer Events for clicking squares
+    // Register Pointer Events for clicking or dragging pieces and squares
     let dragActive = false;
+    let isDraggingPiece = false;
+    let dragStartSquare: string | null = null;
     let initX = 0;
     let initY = 0;
-    let clickCandidate: string | null = null;
+    let downX = 0; // The true initial press X coordinate
+    let downY = 0; // The true initial press Y coordinate
 
     const handlePointerDown = (e: PointerEvent) => {
       dragActive = true;
       initX = e.clientX;
       initY = e.clientY;
-      clickCandidate = getRaycastSquare(e);
-    };
-
-    const handlePointerUp = (e: PointerEvent) => {
-      dragActive = false;
-      const deltaX = Math.abs(e.clientX - initX);
-      const deltaY = Math.abs(e.clientY - initY);
-
-      // If they didn't drag their angle but performed a swift clean click
-      if (deltaX < 5 && deltaY < 5) {
-        const clickedSq = getRaycastSquare(e);
-        if (clickedSq) {
-          const selected = stateRef.current.selectedSquare;
-          const valid = stateRef.current.validMoves;
-          const userColor = stateRef.current.playerColor;
-
-          // Check if it was a movement click to a valid candidate square
-          if (selected && valid.includes(clickedSq)) {
-            // Execution callback
-            onMove(selected, clickedSq);
-            setSelectedSquare(null);
-          } else {
-            // Else handle selection
-            const pieceOnSq = activePieces.find((p) => p.square === clickedSq);
-            if (pieceOnSq) {
-              // Ensure player only highlights their own legal pieces
-              if (userColor === null) {
-                // Spectator - no selection
-                setSelectedSquare(null);
-              } else if (pieceOnSq.color === userColor) {
-                setSelectedSquare(clickedSq);
-              } else {
-                setSelectedSquare(null);
-              }
-            } else {
-              setSelectedSquare(null);
-            }
-          }
-        } else {
-          setSelectedSquare(null);
+      downX = e.clientX;
+      downY = e.clientY;
+      
+      const sq = getRaycastSquare(e);
+      dragStartSquare = sq;
+      isDraggingPiece = false;
+      
+      if (sq) {
+        const userColor = stateRef.current.playerColor;
+        const pieceOnSq = activePieces.find((p) => p.square === sq);
+        if (pieceOnSq && pieceOnSq.color === userColor && userColor !== null) {
+          isDraggingPiece = true;
+          // Pre-select this square on pointer down to make the drag feedback instantaneous
+          setSelectedSquare(sq);
         }
       }
     };
 
     const handlePointerMove = (e: PointerEvent) => {
       if (!dragActive) return;
-      const dx = e.clientX - initX;
-      const dy = e.clientY - initY;
+      if (e.cancelable) {
+        e.preventDefault(); // prevent browser default scrolls on mobile while dragging board
+      }
+      
+      // If we are dragging a piece, don't spin the camera
+      if (!isDraggingPiece) {
+        const dx = e.clientX - initX;
+        const dy = e.clientY - initY;
 
-      // Adjust camera yaw and pitch
-      setYaw((y) => y - dx * 0.006);
-      setPitch((p) => Math.max(0.12, Math.min(Math.PI / 2 - 0.08, p - dy * 0.006)));
+        // Adjust camera yaw and pitch
+        setYaw((y) => y - dx * 0.006);
+        setPitch((p) => Math.max(0.12, Math.min(Math.PI / 2 - 0.08, p - dy * 0.006)));
+      }
 
       initX = e.clientX;
       initY = e.clientY;
     };
 
+    const handlePointerUp = (e: PointerEvent) => {
+      dragActive = false;
+      const totalDelta = Math.hypot(e.clientX - downX, e.clientY - downY);
+      const clickedSq = getRaycastSquare(e);
+
+      // If they were actively dragging a piece and released it on a target square (drag-and-drop)
+      if (isDraggingPiece && dragStartSquare && clickedSq && clickedSq !== dragStartSquare && totalDelta >= 15) {
+        const valid = stateRef.current.validMoves;
+        if (valid.includes(clickedSq)) {
+          onMove(dragStartSquare, clickedSq);
+          setSelectedSquare(null);
+        } else {
+          // If illegal square, reset selection
+          setSelectedSquare(null);
+        }
+      } else {
+        // Fallback to Click-to-Move (taps or swift click-releases)
+        if (totalDelta < 25) {
+          if (clickedSq) {
+            const selected = stateRef.current.selectedSquare;
+            const valid = stateRef.current.validMoves;
+            const userColor = stateRef.current.playerColor;
+
+            // Check if it was a movement click to a valid candidate square
+            if (selected && valid.includes(clickedSq)) {
+              onMove(selected, clickedSq);
+              setSelectedSquare(null);
+            } else {
+              // Else handle selection
+              const pieceOnSq = activePieces.find((p) => p.square === clickedSq);
+              if (pieceOnSq) {
+                // Ensure player only highlights their own legal pieces
+                if (userColor === null) {
+                  setSelectedSquare(null);
+                } else if (pieceOnSq.color === userColor) {
+                  setSelectedSquare(clickedSq);
+                } else {
+                  setSelectedSquare(null);
+                }
+              } else {
+                setSelectedSquare(null);
+              }
+            }
+          } else {
+            setSelectedSquare(null);
+          }
+        }
+      }
+
+      isDraggingPiece = false;
+      dragStartSquare = null;
+    };
+
     const canvasElem = canvasRef.current;
     canvasElem.addEventListener('pointerdown', handlePointerDown);
-    canvasElem.addEventListener('pointerup', handlePointerUp);
+    canvasElem.addEventListener('pointerup', handlePointerUp, { passive: true } as any);
     canvasElem.addEventListener('pointermove', handlePointerMove);
 
     // Touch support (using Mouse coordinates above makes typical pointers click-compatible,
@@ -724,6 +979,17 @@ export default function ChessBoard3D({
       const h = containerRef.current.clientHeight;
 
       camera.aspect = w / h;
+
+      // Automatically adjust camera zoom factor depending on aspect ratio to fit board neatly
+      const isPortrait = w < h;
+      if (isPortrait) {
+        // Pull back zoom for vertical viewports so edges don't truncate
+        stateRef.current.zoom = Math.max(10.5, 11.5 + (480 - w) * 0.015);
+      } else {
+        // Closer zoom for horizontal landscape wide viewports
+        stateRef.current.zoom = Math.max(9.0, 10.0 + (550 - h) * 0.007);
+      }
+
       camera.updateProjectionMatrix();
       renderer.setSize(w, h);
     };
@@ -762,7 +1028,7 @@ export default function ChessBoard3D({
   return (
     <div className="relative w-full h-full flex flex-col bg-slate-950 rounded-2xl overflow-hidden border border-slate-800 shadow-2xl">
       {/* 3D View Container */}
-      <div ref={containerRef} className="relative w-full flex-grow min-h-[380px] bg-[#0b0f19]">
+      <div ref={containerRef} className="relative w-full flex-grow min-h-[250px] sm:min-h-[350px] md:min-h-[380px] bg-[#0b0f19]">
         <canvas ref={canvasRef} className="w-full h-full cursor-grab active:cursor-grabbing" />
 
         {/* Dynamic Controls Layout overlay */}
