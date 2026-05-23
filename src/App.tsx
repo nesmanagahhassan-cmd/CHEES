@@ -346,6 +346,19 @@ function ChessAppContent() {
     };
   }, [currentRoomId]);
 
+  // Synchronize playerColor dynamically with active Firestore room roles
+  useEffect(() => {
+    if (room && user) {
+      if (room.whitePlayerId === user.uid) {
+        setPlayerColor('w');
+      } else if (room.blackPlayerId === user.uid) {
+        setPlayerColor('b');
+      } else {
+        setPlayerColor(null); // spectator
+      }
+    }
+  }, [room, user]);
+
   const isSpectatorSlot = () => {
     if (!room || !user) return true;
     return room.whitePlayerId !== user.uid && room.blackPlayerId !== user.uid;

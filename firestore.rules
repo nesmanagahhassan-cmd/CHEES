@@ -108,14 +108,14 @@ service cloud.firestore {
                           // Validate move author (must be the current player based on turn)
                           ((existing().turn == "w" && existing().whitePlayerId == request.auth.uid) ||
                            (existing().turn == "b" && existing().blackPlayerId == request.auth.uid)) &&
-                          incoming().diff(existing()).affectedKeys().hasAny([
+                          incoming().diff(existing()).affectedKeys().hasOnly([
                              'fen', 'turn', 'lastMove', 'status', 'winnerId', 'winnerName', 'updatedAt'
                           ])) ||
 
                          // Action: Resign/Draw Agreement/Forfeit/Leave
                          (existing().status == "playing" &&
                           (request.auth.uid == existing().whitePlayerId || request.auth.uid == existing().blackPlayerId) &&
-                          incoming().diff(existing()).affectedKeys().hasAny([
+                          incoming().diff(existing()).affectedKeys().hasOnly([
                              'status', 'winnerId', 'winnerName', 'updatedAt'
                           ]))
                        );
