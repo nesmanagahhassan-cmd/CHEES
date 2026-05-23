@@ -20,12 +20,12 @@ export default function Leaderboard() {
           list.push(doc.data() as UserStats);
         });
 
-        if (list.length > 0) {
-          setLeaders(list);
-        } else {
-          // Prepopulate default master bots if DB is empty
-          setLeaders(getMockLeaders());
-        }
+        const mockList = getMockLeaders();
+        const filteredMock = mockList.filter(
+          (mock) => !list.some((real) => real.uid === mock.uid || real.email === mock.email)
+        );
+        const combined = [...list, ...filteredMock].sort((a, b) => b.points - a.points).slice(0, 10);
+        setLeaders(combined);
       } catch (err) {
         console.warn('Leaderboard loading failed - presenting local defaults:', err);
         setLeaders(getMockLeaders());

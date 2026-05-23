@@ -139,10 +139,45 @@ export function FirebaseProvider({ children }: { children: React.ReactNode }) {
         }
         setUserStats(initialStats);
       }
-    } catch (err) {
-      console.error('Anonymous sign-in failed:', err);
+    } catch (err: any) {
+      console.error('Anonymous sign-in failed, falling back to local guest:', err);
+      
+      const fallbackUid = 'local_guest_' + Math.random().toString(36).substring(2, 11);
+      const initialStats: UserStats = {
+        uid: fallbackUid,
+        email: `${fallbackUid.substring(0, 18)}@chess3d.local`,
+        displayName: customName || `زائر محلي ${fallbackUid.substring(12, 16)}`,
+        photoURL: `https://api.dicebear.com/7.x/bottts/svg?seed=${fallbackUid}`,
+        wins: 0,
+        losses: 0,
+        draws: 0,
+        points: 1000,
+        createdAt: new Date().toISOString()
+      };
+      
+      const mockUser = {
+        uid: fallbackUid,
+        displayName: initialStats.displayName,
+        email: initialStats.email,
+        emailVerified: false,
+        isAnonymous: true,
+        metadata: {},
+        providerData: [],
+        refreshToken: '',
+        tenantId: null,
+        delete: async () => {},
+        getIdToken: async () => '',
+        getIdTokenResult: async () => ({}) as any,
+        reload: async () => {},
+        toJSON: () => ({})
+      } as unknown as FirebaseUser;
+      
+      setUser(mockUser);
+      setUserStats(initialStats);
       setLoading(false);
-      throw err;
+      
+      // Throw custom error so App.tsx can show a friendly warning details
+      throw new Error(`PROVIDER_DISABLED_FALLBACK: ${err.message || err}`);
     }
   };
 

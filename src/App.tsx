@@ -1067,23 +1067,39 @@ function ChessAppContent() {
                       <p className="text-xs text-slate-400">
                         الرجاء كتابة اسم مستعار للعب السريع كزائر، أو تسجيل الدخول بـ Google لمزامنة إنجازاتك
                       </p>
-                      <div className="flex flex-col sm:flex-row gap-2 max-w-md mx-auto">
-                        <input
-                          id="guest_name_input"
-                          type="text"
-                          value={guestName}
-                          onChange={(e) => setGuestName(e.target.value)}
-                          placeholder="اكتب اسم الزائر هنا..."
-                          className="flex-grow bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-amber-500 transition-colors"
-                        />
-                        <button
-                          id="btn_guest_login"
-                          onClick={() => signInAsGuest(guestName)}
-                          className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold px-4 py-2 rounded-xl border border-slate-750 transition-all"
-                        >
-                          دخول كزائر 👤
-                        </button>
-                      </div>
+                        <div className="flex flex-col sm:flex-row gap-2 max-w-md mx-auto">
+                          <input
+                            id="guest_name_input"
+                            type="text"
+                            value={guestName}
+                            onChange={(e) => setGuestName(e.target.value)}
+                            placeholder="اكتب اسم الزائر هنا..."
+                            className="flex-grow bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-amber-500 transition-colors"
+                          />
+                          <button
+                            id="btn_guest_login"
+                            onClick={async () => {
+                              const trimmed = guestName.trim();
+                              if (!trimmed) {
+                                triggerToast("يرجى إدخال اسم مستعار للعب أولاً!");
+                                return;
+                              }
+                              try {
+                                await signInAsGuest(trimmed);
+                                triggerToast("تم تسجيل الدخول كزائر بنجاح! 👤");
+                              } catch (err: any) {
+                                if (err.message && err.message.includes("PROVIDER_DISABLED_FALLBACK")) {
+                                  triggerToast("تم الدخول بصفة زائر محلي! لتفعيل اللعب أونلاين يرجى تفعيل Anonymous Auth في لوحة Firebase.");
+                                } else {
+                                  triggerToast(`عذراً، تعذر الدخول كزائر: ${err.message || err}`);
+                                }
+                              }
+                            }}
+                            className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold px-4 py-2 rounded-xl border border-slate-750 transition-all"
+                          >
+                            دخول كزائر 👤
+                          </button>
+                        </div>
                       <div className="relative flex py-2 items-center">
                         <div className="flex-grow border-t border-slate-800"></div>
                         <span className="flex-shrink mx-4 text-[10px] text-slate-500">أو سجل إلكترونياً</span>

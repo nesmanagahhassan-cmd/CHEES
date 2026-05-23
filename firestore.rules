@@ -68,16 +68,15 @@ service cloud.firestore {
                        incoming().wins == 0 &&
                        incoming().losses == 0 &&
                        incoming().draws == 0 &&
-                       incoming().points == 0;
+                       incoming().points == 1000;
       allow update: if isOwner(userId) &&
                        isValidUser(incoming()) &&
                        incoming().uid == request.auth.uid &&
                        incoming().email == existing().email &&
-                       // Allow incrementing stats
+                       // Allow incrementing stats (points can go up or down)
                        incoming().wins >= existing().wins &&
                        incoming().losses >= existing().losses &&
-                       incoming().draws >= existing().draws &&
-                       incoming().points >= existing().points;
+                       incoming().draws >= existing().draws;
     }
 
     match /rooms/{roomId} {
