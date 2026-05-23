@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import * as THREE from 'three';
-import { Rotate3d, Maximize2, Zap, HelpCircle } from 'lucide-react';
+import { Rotate3d, Maximize2, Zap, HelpCircle, Lock, Unlock } from 'lucide-react';
 import { LastMove } from '../types';
 
 interface ChessBoard3DProps {
@@ -44,21 +44,25 @@ export default function ChessBoard3D({
   // Custom Rotation States
   const [yaw, setYaw] = useState<number>(playerColor === 'b' ? Math.PI : 0); // yaw around the board
   const [pitch, setPitch] = useState<number>(0.8); // tilt angle
-  const [zoom, setZoom] = useState<number>(10.5); // camera distance
+  const [zoom, setZoom] = useState<number>(12.0); // camera distance (pulled back for complete board visibility)
   const [autoRotate, setAutoRotate] = useState<boolean>(false);
   const [showHelpers, setShowHelpers] = useState<boolean>(true);
+  const [cameraLocked, setCameraLocked] = useState<boolean>(true); // Locked by default for absolute stability on touch/drag
 
   // References to communicate with Three.js loops
   const stateRef = useRef({
     yaw: playerColor === 'b' ? Math.PI : 0,
     pitch: 0.8,
-    zoom: 10.5,
+    zoom: 12.0,
     autoRotate: false,
+    cameraLocked: true,
     selectedSquare: null as string | null,
     validMoves: [] as string[],
     playerColor: playerColor,
     fen: fen,
     lastMove: lastMove as LastMove | null,
+    onMove: onMove,
+    setSelectedSquare: setSelectedSquare,
   });
 
   // Sync props to stateRef
@@ -68,7 +72,9 @@ export default function ChessBoard3D({
     stateRef.current.selectedSquare = selectedSquare;
     stateRef.current.validMoves = validMoves;
     stateRef.current.lastMove = lastMove;
-  }, [fen, playerColor, selectedSquare, validMoves, lastMove]);
+    stateRef.current.onMove = onMove;
+    stateRef.current.setSelectedSquare = setSelectedSquare;
+  }, [fen, playerColor, selectedSquare, validMoves, lastMove, onMove, setSelectedSquare]);
 
   // Handle Drag / Pointer coordinates to rotate camera
   useEffect(() => {
@@ -76,7 +82,8 @@ export default function ChessBoard3D({
     stateRef.current.pitch = pitch;
     stateRef.current.zoom = zoom;
     stateRef.current.autoRotate = autoRotate;
-  }, [yaw, pitch, zoom, autoRotate]);
+    stateRef.current.cameraLocked = cameraLocked;
+  }, [yaw, pitch, zoom, autoRotate, cameraLocked]);
 
   // Adjust View when player color changes
   useEffect(() => {
@@ -768,7 +775,7 @@ export default function ChessBoard3D({
         if (pieceOnSq && pieceOnSq.color === userColor && userColor !== null) {
           isDraggingPiece = true;
           // Pre-select this square on pointer down to make the drag feedback instantaneous
-          setSelectedSquare(sq);
+          stateRef.current.setSelectedSquare(sq);
         }
       }
     };
@@ -779,8 +786,8 @@ export default function ChessBoard3D({
         e.preventDefault(); // prevent browser default scrolls on mobile while dragging board
       }
       
-      // If we are dragging a piece, don't spin the camera
-      if (!isDraggingPiece) {
+      // If we are dragging a piece OR camera is locked, don't spin the camera
+      if (!isDraggingPiece && !stateRef.current.cameraLocked) {
         const dx = e.clientX - initX;
         const dy = e.clientY - initY;
 
@@ -793,6 +800,12 @@ export default function ChessBoard3D({
       initY = e.clientY;
     };
 
+    const handlePointerCancel = (e: PointerEvent) => {
+      dragActive = false;
+      isDraggingPiece = false;
+      dragStartSquare = null;
+    };
+
     const handlePointerUp = (e: PointerEvent) => {
       dragActive = false;
       const totalDelta = Math.hypot(e.clientX - downX, e.clientY - downY);
@@ -802,11 +815,11 @@ export default function ChessBoard3D({
       if (isDraggingPiece && dragStartSquare && clickedSq && clickedSq !== dragStartSquare && totalDelta >= 15) {
         const valid = stateRef.current.validMoves;
         if (valid.includes(clickedSq)) {
-          onMove(dragStartSquare, clickedSq);
-          setSelectedSquare(null);
+          stateRef.current.onMove(dragStartSquare, clickedSq);
+          stateRef.current.setSelectedSquare(null);
         } else {
           // If illegal square, reset selection
-          setSelectedSquare(null);
+          stateRef.current.setSelectedSquare(null);
         }
       } else {
         // Fallback to Click-to-Move (taps or swift click-releases)
@@ -818,26 +831,26 @@ export default function ChessBoard3D({
 
             // Check if it was a movement click to a valid candidate square
             if (selected && valid.includes(clickedSq)) {
-              onMove(selected, clickedSq);
-              setSelectedSquare(null);
+              stateRef.current.onMove(selected, clickedSq);
+              stateRef.current.setSelectedSquare(null);
             } else {
               // Else handle selection
               const pieceOnSq = activePieces.find((p) => p.square === clickedSq);
               if (pieceOnSq) {
                 // Ensure player only highlights their own legal pieces
                 if (userColor === null) {
-                  setSelectedSquare(null);
+                  stateRef.current.setSelectedSquare(null);
                 } else if (pieceOnSq.color === userColor) {
-                  setSelectedSquare(clickedSq);
+                  stateRef.current.setSelectedSquare(clickedSq);
                 } else {
-                  setSelectedSquare(null);
+                  stateRef.current.setSelectedSquare(null);
                 }
               } else {
-                setSelectedSquare(null);
+                stateRef.current.setSelectedSquare(null);
               }
             }
           } else {
-            setSelectedSquare(null);
+            stateRef.current.setSelectedSquare(null);
           }
         }
       }
@@ -850,6 +863,7 @@ export default function ChessBoard3D({
     canvasElem.addEventListener('pointerdown', handlePointerDown);
     canvasElem.addEventListener('pointerup', handlePointerUp, { passive: true } as any);
     canvasElem.addEventListener('pointermove', handlePointerMove);
+    canvasElem.addEventListener('pointercancel', handlePointerCancel);
 
     // Touch support (using Mouse coordinates above makes typical pointers click-compatible,
     // but we can explicitly set style and prevent defaults to keep standard mobile scrolls smooth)
@@ -980,14 +994,15 @@ export default function ChessBoard3D({
 
       camera.aspect = w / h;
 
-      // Automatically adjust camera zoom factor depending on aspect ratio to fit board neatly
-      const isPortrait = w < h;
-      if (isPortrait) {
-        // Pull back zoom for vertical viewports so edges don't truncate
-        stateRef.current.zoom = Math.max(10.5, 11.5 + (480 - w) * 0.015);
+      // Automatically adjust camera zoom factor depending on aspect ratio to fit the entire table/board neatly without cutting edges
+      const aspect = w / h;
+      if (aspect >= 1) {
+        // Landscape wide screens: height is the limiting dimension. Expand slightly if container is short.
+        stateRef.current.zoom = Math.max(12.0, 11.5 + (600 - h) * 0.008);
       } else {
-        // Closer zoom for horizontal landscape wide viewports
-        stateRef.current.zoom = Math.max(9.0, 10.0 + (550 - h) * 0.007);
+        // Portrait narrow screens: width is the limiting dimension. Scale pull-back inversely with aspect ratio
+        // to guarantee that the whole chessboard (width ~10) is always 100% visible on any small phone screen.
+        stateRef.current.zoom = Math.max(12.5, 11.2 / aspect);
       }
 
       camera.updateProjectionMatrix();
@@ -1004,6 +1019,7 @@ export default function ChessBoard3D({
       canvasElem.removeEventListener('pointerdown', handlePointerDown);
       canvasElem.removeEventListener('pointerup', handlePointerUp);
       canvasElem.removeEventListener('pointermove', handlePointerMove);
+      canvasElem.removeEventListener('pointercancel', handlePointerCancel);
 
       // Clean geometry resources
       tableGeo.dispose();
@@ -1034,6 +1050,19 @@ export default function ChessBoard3D({
         {/* Dynamic Controls Layout overlay */}
         <div className="absolute top-4 right-4 flex flex-col gap-2 z-10">
           <button
+            id="btn_lock_cam"
+            onClick={() => setCameraLocked(!cameraLocked)}
+            className={`p-2 rounded-xl border flex items-center justify-center transition-all ${
+              cameraLocked
+                ? 'bg-rose-600 border-rose-500 text-white shadow-md shadow-rose-600/25'
+                : 'bg-slate-900/80 border-slate-700/60 text-slate-300 hover:text-white'
+            }`}
+            title={cameraLocked ? "قفل اتجاه اللوحة (ثابت)" : "فتح زوايا الكاميرا (حر)"}
+          >
+            {cameraLocked ? <Lock className="w-5 h-5" /> : <Unlock className="w-5 h-5" />}
+          </button>
+
+          <button
             id="btn_auto_rotate"
             onClick={() => setAutoRotate(!autoRotate)}
             className={`p-2 rounded-xl border flex items-center justify-center transition-all ${
@@ -1051,7 +1080,7 @@ export default function ChessBoard3D({
             onClick={() => {
               setYaw(playerColor === 'b' ? Math.PI : 0);
               setPitch(0.8);
-              setZoom(10.5);
+              setZoom(12.0);
             }}
             className="p-2 rounded-xl bg-slate-900/80 border border-slate-700/60 text-slate-300 hover:text-white hover:bg-slate-800 transition-all"
             title="إعادة ضبط الكاميرا"
@@ -1072,22 +1101,7 @@ export default function ChessBoard3D({
           </button>
         </div>
 
-        {/* Guides & Active Turn HUD Indicator */}
-        <div className="absolute bottom-4 left-4 right-4 flex justify-between items-center pointer-events-none gap-2 z-10">
-          <div className="p-2 px-3 rounded-xl bg-slate-900/90 border border-slate-800 backdrop-blur text-xs text-slate-300 font-mono shadow-md">
-            {playerColor === 'w' ? (
-              <span className="text-emerald-400">● دور الأبيض (أنت)</span>
-            ) : playerColor === 'b' ? (
-              <span className="text-amber-400">● دور الأسود (أنت)</span>
-            ) : (
-              <span className="text-blue-400">● مشاهدة فقط</span>
-            )}
-          </div>
 
-          <div className="p-2 px-3 rounded-xl bg-slate-900/90 border border-slate-800 backdrop-blur text-xs text-slate-300 font-mono shadow-md">
-            {turn === 'w' ? 'دور اللاعب الأبيض الإستراتيجي' : 'دور اللاعب الأسود التكتيكي'}
-          </div>
-        </div>
 
         {/* Interactive Guide Banner */}
         {showHelpers && (

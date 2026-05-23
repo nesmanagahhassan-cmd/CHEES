@@ -91,6 +91,14 @@ function ChessAppContent() {
   const boardSyncRef = useRef<boolean>(false);
   const clockIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Keep references to prevent stale closures in real-time listeners
+  const gameRef = useRef<Chess>(game);
+  gameRef.current = game;
+  const fenRef = useRef<string>(fen);
+  fenRef.current = fen;
+  const spectatorCountRef = useRef<number>(spectatorCount);
+  spectatorCountRef.current = spectatorCount;
+
   // PWA Install Prompt State
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [showInstallBtn, setShowInstallBtn] = useState<boolean>(true); // default true so they always have setup instructions
@@ -225,9 +233,12 @@ function ChessAppContent() {
       setTimeout(() => {
         const bestMove = getBestMove(game.fen(), aiDifficulty);
         if (bestMove) {
-          const moveRes = game.move(bestMove);
+          const nextGame = new Chess();
+          nextGame.load(game.fen());
+          const moveRes = nextGame.move(bestMove);
           if (moveRes) {
-            setFen(game.fen());
+            setGame(nextGame);
+            setFen(nextGame.fen());
             if (soundEnabled) {
               if (moveRes.captured) {
                 audio.playCapture();
@@ -236,7 +247,7 @@ function ChessAppContent() {
               }
             }
             // triggers checks
-            if (game.inCheck()) {
+            if (nextGame.inCheck()) {
               if (soundEnabled) audio.playCheck();
               triggerToast('كش ملك! الملك في خطر!');
             }
@@ -259,26 +270,43 @@ function ChessAppContent() {
       const roomData = snapshot.data() as ChessRoom;
       setRoom(roomData);
 
-      // 1. Sync Chess local move model
+      // 1. Sync Chess local move model using strict React immutability
       const incomingFen = roomData.fen;
-      if (game.fen() !== incomingFen) {
-        game.load(incomingFen);
-        setFen(incomingFen);
+      if (gameRef.current.fen() !== incomingFen) {
+        try {
+          const nextGame = new Chess();
+          nextGame.load(incomingFen);
+          
+          if (!firstLoad && soundEnabled && roomData.lastMove) {
+            if (roomData.lastMove.captured) {
+              audio.playCapture();
+            } else {
+              audio.playMove();
+            }
+          }
 
-        // Sound effects play on update
-        if (!firstLoad && soundEnabled && roomData.lastMove) {
-          if (roomData.lastMove.captured) {
-            audio.playCapture();
-          } else {
-            audio.playMove();
+          if (nextGame.inCheck() && !firstLoad) {
+            if (soundEnabled) audio.playCheck();
+            triggerToast('كش ملك! الملك في مأزق!');
+          }
+
+          setGame(nextGame);
+          setFen(incomingFen);
+        } catch (e) {
+          console.error("Error setting incoming synchronized FEN:", incomingFen, e);
+          try {
+            gameRef.current.load(incomingFen);
+            setFen(incomingFen);
+          } catch (e2) {
+            console.error("In-place fallback failed:", e2);
           }
         }
-      }
-
-      // Check for remote check status
-      if (game.inCheck() && !firstLoad) {
-        if (soundEnabled) audio.playCheck();
-        triggerToast('كش ملك! الملك في مأزق!');
+      } else {
+        // Even if FEN didn't change, sync check status for safety
+        if (gameRef.current.inCheck() && !firstLoad) {
+          if (soundEnabled) audio.playCheck();
+          triggerToast('كش ملك! الملك في مأزق!');
+        }
       }
 
       // Check for results
@@ -300,7 +328,7 @@ function ChessAppContent() {
       });
       
       // Notify player when a spectator joins
-      if (names.length > spectatorCount && names.length > 0) {
+      if (names.length > spectatorCountRef.current && names.length > 0) {
         const newSpecName = names[names.length - 1];
         triggerToast(`المشاهد ${newSpecName} يتابع المباراة الآن! 👀`);
         // publish alert chat message
@@ -357,68 +385,80 @@ function ChessAppContent() {
       }
     }
 
+    const nextGame = new Chess();
+    nextGame.load(game.fen());
+    let moveRes;
+
     try {
-      // Attempt moving via chess.js library
-      const moveRes = game.move({ from, to, promotion: 'q' });
-      if (moveRes) {
-        // Successful chess coordinate translate
-        setFen(game.fen());
-        setSelectedSquare(null);
+      // Attempt moving via chess.js library dynamically
+      moveRes = nextGame.move({ from, to, promotion: 'q' });
+    } catch (err) {
+      triggerToast('حركة غير قانونية طبقاً لقواعد الشطرنج!');
+      setSelectedSquare(null);
+      return;
+    }
 
-        // Calculate capture indicators for sound
-        if (soundEnabled) {
-          if (moveRes.captured) {
-            audio.playCapture();
+    if (moveRes) {
+      // Successful chess coordinate translate locally
+      setGame(nextGame);
+      setFen(nextGame.fen());
+      setSelectedSquare(null);
+
+      // Play action sounds
+      if (soundEnabled) {
+        if (moveRes.captured) {
+          audio.playCapture();
+        } else {
+          audio.playMove();
+        }
+      }
+
+      const lMove: LastMove = {
+        from,
+        to,
+        piece: moveRes.piece,
+        color: moveRes.color,
+        captured: moveRes.captured,
+        san: moveRes.san,
+        timestamp: Date.now(),
+      };
+
+      // Determine outcomes on the next position
+      let isDone = false;
+      let isDraw = false;
+      let outcomeText = '';
+      if (nextGame.isCheckmate()) {
+        isDone = true;
+        outcomeText = `كش ملك مات! فاز اللاعب ${moveRes.color === 'w' ? 'الأبيض' : 'الأسود'} بالضربة القاضية!`;
+        if (soundEnabled) audio.playVictory();
+        triggerToast(outcomeText);
+
+        // Update user statistics
+        if (room) {
+          const isWinnerMe = (moveRes.color === 'w' && room.whitePlayerId === user?.uid) ||
+                             (moveRes.color === 'b' && room.blackPlayerId === user?.uid);
+          if (isWinnerMe) {
+            await addWin();
           } else {
-            audio.playMove();
+            await addLoss();
           }
         }
+      } else if (nextGame.isDraw() || nextGame.isStalemate() || nextGame.isThreefoldRepetition()) {
+        isDone = true;
+        isDraw = true;
+        outcomeText = 'تعادل! انتهى التنافس بالتساوي.';
+        if (soundEnabled) audio.playVictory();
+        triggerToast(outcomeText);
+        if (room) await addDraw();
+      }
 
-        const lMove: LastMove = {
-          from,
-          to,
-          piece: moveRes.piece,
-          color: moveRes.color,
-          captured: moveRes.captured,
-          san: moveRes.san,
-          timestamp: Date.now(),
-        };
-
-        // Determine if Game Over
-        let isDone = false;
-        let isDraw = false;
-        let outcomeText = '';
-        if (game.isCheckmate()) {
-          isDone = true;
-          outcomeText = `كش ملك مات! فاز اللاعب ${moveRes.color === 'w' ? 'الأبيض' : 'الأسود'} بالضربة القاضية!`;
-          if (soundEnabled) audio.playVictory();
-          triggerToast(outcomeText);
-
-          // update user statistics
-          if (room) {
-            const isWinnerMe = (moveRes.color === 'w' && room.whitePlayerId === user?.uid) ||
-                               (moveRes.color === 'b' && room.blackPlayerId === user?.uid);
-            if (isWinnerMe) {
-              await addWin();
-            } else {
-              await addLoss();
-            }
-          }
-        } else if (game.isDraw() || game.isStalemate() || game.isThreefoldRepetition()) {
-          isDone = true;
-          isDraw = true;
-          outcomeText = 'تعادل! انتهى التنافس بالتساوي.';
-          if (soundEnabled) audio.playVictory();
-          triggerToast(outcomeText);
-          if (room) await addDraw();
-        }
-
-        // 2. Sync online room document if playing multiplayer
-        if (room && currentRoomId) {
+      // 2. Sync online room document if playing multiplayer
+      if (room && currentRoomId) {
+        try {
           const roomRef = doc(db, 'rooms', currentRoomId);
           await updateDoc(roomRef, {
-            fen: game.fen(),
-            turn: game.turn(),
+            fen: nextGame.fen(),
+            turn: nextGame.turn(),
             lastMove: lMove,
             status: isDone ? (isDraw ? 'draw' : 'finished') : 'playing',
             winnerId: isDone && !isDraw ? user?.uid : null,
@@ -429,14 +469,20 @@ function ChessAppContent() {
           // System Alerts chat log
           if (isDone) {
             logSystemNotification(`انتهت المباراة! ${outcomeText}`);
-          } else if (game.inCheck()) {
+          } else if (nextGame.inCheck()) {
             logSystemNotification(`تنبيه: اللاعب الأخر في وضعية كش ملك! ⚠️`);
           }
+        } catch (dbErr) {
+          console.error("Failed to sync move to Firestore database:", dbErr);
+          triggerToast('فشل في مزامنة الحركة أونلاين!');
+          // Revert local move to remain inside perfect sync with the Firestore state
+          const revertedGame = new Chess();
+          revertedGame.load(game.fen());
+          setGame(revertedGame);
+          setFen(revertedGame.fen());
+          handleFirestoreError(dbErr, OperationType.UPDATE, `rooms/${currentRoomId}`);
         }
       }
-    } catch (err) {
-      triggerToast('حركة غير قانونية طبقاً لقواعد الشطرنج!');
-      setSelectedSquare(null);
     }
   };
 
@@ -548,7 +594,9 @@ function ChessAppContent() {
 
       setCurrentRoomId(code);
       setGameMode('online_room');
-      game.load(roomData.fen);
+      const freshGame = new Chess();
+      freshGame.load(roomData.fen);
+      setGame(freshGame);
       setFen(roomData.fen);
       if (soundEnabled) audio.playStart();
     } catch (err) {
@@ -611,10 +659,11 @@ function ChessAppContent() {
     triggerToast('تم نسخ رمز الغرفة بنجاح! أرسله للمنافس للمبارزة.');
   };
 
-  // Reset Match State for Local games
+  // Reset Match State for Local games with strict React immutability
   const handleLocalReset = () => {
-    game.reset();
-    setFen(game.fen());
+    const freshGame = new Chess();
+    setGame(freshGame);
+    setFen(freshGame.fen());
     setSelectedSquare(null);
     setActiveClocks({ w: 600, b: 600 });
     triggerToast('تمت إعادة تهيئة الطاولة وبدء مبارزة جديدة!');
@@ -774,188 +823,164 @@ function ChessAppContent() {
 
       {/* 🧩 Active game Board Interface */}
       {gameMode ? (
-        <main className="flex-grow p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 max-w-7xl mx-auto w-full">
+        <div className="fixed inset-0 h-[100dvh] w-screen bg-slate-950 flex flex-col overflow-hidden select-none z-50">
           
-          {/* Active 3D Board Canvas (8 cols layout) */}
-          <section className="lg:col-span-8 flex flex-col gap-4 h-full w-full min-h-[280px] sm:min-h-[400px] lg:min-h-[580px] max-w-full overflow-hidden">
-            <div className="flex justify-between items-center bg-slate-900/50 p-3 rounded-xl border border-slate-900">
+          {/* Top minimal bar */}
+          <header className="h-[52px] px-4 md:px-6 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between shrink-0 select-none">
+            <div className="flex items-center gap-2">
               <button
                 id="btn_exit_game"
                 onClick={handleExitMatch}
-                className="flex items-center gap-2 px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-xl text-xs font-semibold text-slate-300 transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-xl text-xs font-semibold text-slate-300 transition-all select-none"
               >
                 <ChevronRight className="w-4 h-4" />
-                مغادرة والرجوع للردهة
+                <span className="hidden xs:inline">الردهة</span>
               </button>
-
-              <div className="flex items-center gap-2.5">
-                {currentRoomId && (
-                  <div className="flex gap-1.5 items-center">
-                    <span className="text-[10px] text-slate-500 font-mono">الكود:</span>
-                    <button
-                      id="btn_copy_code"
-                      onClick={copyRoomCode}
-                      className="px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs text-amber-500 flex items-center gap-1.5 hover:bg-slate-900 font-mono"
-                    >
-                      {copiedCode ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                      <span>{currentRoomId}</span>
-                    </button>
-                  </div>
-                )}
-
-                {/* Local reset button strictly for offline */}
-                {!room && (
-                  <button
-                    id="btn_local_reset"
-                    onClick={handleLocalReset}
-                    className="p-1.5 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-300 transition-colors"
-                    title="تصفية ريكب بداية اللعبة"
-                  >
-                    <RotateCcw className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
+              {currentRoomId && (
+                <button
+                  id="btn_copy_code"
+                  onClick={copyRoomCode}
+                  className="px-2.5 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-[11px] text-amber-500 hover:bg-slate-900 font-mono flex items-center gap-1 transition-all"
+                >
+                  {copiedCode ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{currentRoomId}</span>
+                </button>
+              )}
             </div>
 
-            {/* Render 3D Engine canvas */}
-            <div className="flex-grow min-h-[250px] sm:min-h-[350px] md:min-h-[450px] aspect-square lg:aspect-auto">
-              <ChessBoard3D
-                fen={fen}
-                onMove={handlePieceMove}
-                turn={room ? room.turn : game.turn()}
-                playerColor={room ? playerColor : (gameMode === 'offline_ai' ? playerColor : 'w')}
-                lastMove={room ? (room.lastMove as any) : null}
-                validMoves={validMoves}
-                selectedSquare={selectedSquare}
-                setSelectedSquare={setSelectedSquare}
-              />
-            </div>
-          </section>
+            <div className="flex items-center gap-0.5">
+              {/* Reset only for offline */}
+              {!room && (
+                <button
+                  id="btn_local_reset"
+                  onClick={handleLocalReset}
+                  className="p-2 rounded-xl bg-slate-950 border border-slate-800 hover:bg-slate-800 text-slate-300 transition-colors"
+                  title="إعادة تهيئة اللعبة"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                </button>
+              )}
 
-          {/* Side control modules and chat log (4 cols layout) */}
-          <section className="lg:col-span-4 h-full flex flex-col gap-6">
+              <button
+                id="btn_sound_mute"
+                onClick={() => setSoundEnabled(!soundEnabled)}
+                className="p-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-400 hover:text-white transition-colors"
+              >
+                {soundEnabled ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+          </header>
+
+          {/* Main gameplay body */}
+          <div className="flex-grow flex flex-col lg:flex-row h-[calc(100vh-52px)] w-full overflow-hidden">
             
-            {/* Clocks, captures, and HUD ratings */}
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
-              <div className="flex justify-between items-center pb-3 border-b border-slate-800">
-                <span className="text-sm font-semibold text-slate-200">منافسة استراتيجية</span>
-                <span className="text-xs text-blue-400 font-semibold uppercase font-mono bg-blue-500/5 px-2.5 py-1 rounded-md border border-blue-500/10">
-                  {gameMode === 'online_room' ? 'أونلاين مباشر' : 'محلي'}
-                </span>
+            {/* Left/Center Canvas container */}
+            <div className="flex-grow flex flex-col overflow-hidden relative p-2 lg:p-4 bg-slate-950/20">
+              <div className="w-full h-full rounded-2xl overflow-hidden border border-slate-900 bg-slate-950 flex flex-col relative select-none">
+                <ChessBoard3D
+                  fen={fen}
+                  onMove={handlePieceMove}
+                  turn={room ? room.turn : game.turn()}
+                  playerColor={room ? playerColor : (gameMode === 'offline_ai' ? playerColor : (gameMode === 'offline_pass_play' ? game.turn() : 'w'))}
+                  lastMove={room ? (room.lastMove as any) : null}
+                  validMoves={validMoves}
+                  selectedSquare={selectedSquare}
+                  setSelectedSquare={setSelectedSquare}
+                />
               </div>
+            </div>
 
-              {/* Player panels */}
-              <div className="space-y-3.5">
-                {/* BLACK PLAYER Row */}
-                <div className={`p-3 rounded-xl border flex items-center justify-between ${
-                  (room ? room.turn === 'b' : game.turn() === 'b') 
-                    ? 'bg-amber-500/5 border-amber-500/35 shadow shadow-amber-500/10' 
-                    : 'bg-slate-950/40 border-slate-800'
-                }`}>
-                  <div className="flex items-center gap-3">
-                    <div className="w-7.5 h-7.5 rounded-lg bg-slate-950 font-bold border border-slate-600 flex items-center justify-center text-slate-300">
-                      ♟️
+            {/* Right Side information bar */}
+            <div className="w-full lg:w-[360px] xl:w-[400px] border-t lg:border-t-0 lg:border-l border-slate-900 bg-slate-900/40 p-3 flex flex-col justify-between shrink-0 overflow-hidden h-[45%] lg:h-full gap-3">
+              
+              {/* Compact HUD container */}
+              <div className="flex-grow overflow-hidden flex flex-col gap-3 min-h-0">
+                
+                {/* Players Rating Badges */}
+                <div className="grid grid-cols-2 lg:grid-cols-1 gap-2.5 select-none shrink-0">
+                  {/* BLACK Row */}
+                  <div className={`p-2 rounded-xl border flex items-center justify-between transition-all ${
+                    (room ? room.turn === 'b' : game.turn() === 'b')
+                      ? 'bg-amber-500/5 border-amber-500/35 shadow-sm shadow-amber-500/10'
+                      : 'bg-slate-950/55 border-slate-900'
+                  }`}>
+                    <div className="flex items-center gap-1.5 overflow-hidden">
+                      <div className="w-6 h-6 rounded bg-slate-950 font-bold border border-slate-700 flex items-center justify-center text-[10px] shrink-0">
+                        ♟️
+                      </div>
+                      <div className="min-w-0">
+                        <h5 className="text-[10px] sm:text-[11px] font-bold text-slate-200 truncate leading-tight">
+                          {room ? (room.blackPlayerName || 'البحث عن منافس...') : (gameMode === 'offline_ai' ? 'حاسوب ذكي 🤖' : 'اللاعب الأسود')}
+                        </h5>
+                        <p className="text-[8px] sm:text-[9px] text-slate-500 truncate leading-tight">{room ? (room.blackPlayerEmail || 'رابط غائب') : 'خصم تكتيكي'}</p>
+                      </div>
                     </div>
-                    <div>
-                      <h5 className="text-xs font-bold text-slate-200">
-                        {room ? (room.blackPlayerName || 'في انتظار انضمام أسود...') : (gameMode === 'offline_ai' ? 'الذكاء الاصطناعي 🤖' : 'اللاعب الأسود')}
-                      </h5>
-                      <span className="text-[10px] text-slate-500">{room ? (room.blackPlayerEmail || 'رابط غائب') : 'خصم ذكي'}</span>
-                    </div>
-                  </div>
-
-                  <div className="text-right flex items-center gap-2">
-                    {/* Captured pieces by Black */}
-                    <div className="flex gap-0.5 text-[10px]">
-                      {captured.b.slice(0, 4).map((p, idx) => (
-                        <span key={idx} className="bg-slate-800 px-1 rounded text-slate-400">{p}</span>
-                      ))}
-                    </div>
-                    <span className="p-1 px-2 text-xs font-mono font-bold bg-slate-950 rounded-lg text-slate-400 border border-slate-800">
+                    <span className="p-1 px-2 text-[10px] sm:text-[11px] font-mono font-bold bg-slate-900 border border-slate-800 rounded-lg text-amber-500 shrink-0">
                       {formatTime(activeClocks.b)}
                     </span>
                   </div>
-                </div>
 
-                {/* VERSUS Swapper */}
-                <div className="flex justify-center">
-                  <div className="p-1.5 rounded-full bg-slate-950 border border-slate-800 text-slate-500 animate-pulse">
-                    <ArrowRightLeft className="w-4 h-4 rotate-90" />
-                  </div>
-                </div>
-
-                {/* WHITE PLAYER Row */}
-                <div className={`p-3 rounded-xl border flex items-center justify-between ${
-                  (room ? room.turn === 'w' : game.turn() === 'w') 
-                    ? 'bg-amber-500/5 border-amber-500/35 shadow shadow-amber-500/10'  
-                    : 'bg-slate-950/40 border-slate-800'
-                }`}>
-                  <div className="flex items-center gap-3">
-                    <div className="w-7.5 h-7.5 rounded-lg bg-slate-50 font-bold border border-slate-300 flex items-center justify-center text-slate-950">
-                      ♕
+                  {/* WHITE Row */}
+                  <div className={`p-2 rounded-xl border flex items-center justify-between transition-all ${
+                    (room ? room.turn === 'w' : game.turn() === 'w')
+                      ? 'bg-amber-500/5 border-amber-500/35 shadow-sm shadow-amber-500/10'
+                      : 'bg-slate-950/55 border-slate-900'
+                  }`}>
+                    <div className="flex items-center gap-1.5 overflow-hidden">
+                      <div className="w-6 h-6 rounded bg-slate-50 font-bold border border-slate-300 flex items-center justify-center text-slate-950 text-[10px] shrink-0">
+                        ♕
+                      </div>
+                      <div className="min-w-0">
+                        <h5 className="text-[10px] sm:text-[11px] font-bold text-slate-200 truncate leading-tight">
+                          {room ? (room.whitePlayerName || 'المستضيف') : (userStats ? userStats.displayName : 'اللاعب الأبيض')}
+                        </h5>
+                        <p className="text-[8px] sm:text-[9px] text-slate-500 truncate leading-tight">{room ? (room.whitePlayerEmail || 'لاعب مباشر') : 'لاعب محلي'}</p>
+                      </div>
                     </div>
-                    <div>
-                      <h5 className="text-xs font-bold text-slate-200">
-                        {room ? (room.whitePlayerName || 'لاعب أبيض') : (userStats ? userStats.displayName : 'اللاعب الأبيض')}
-                      </h5>
-                      <span className="text-[10px] text-slate-500">{room ? (room.whitePlayerEmail || 'المنشئ للغرفة') : 'لاعب محلي'}</span>
-                    </div>
-                  </div>
-
-                  <div className="text-right flex items-center gap-2">
-                    {/* Captured pieces by White */}
-                    <div className="flex gap-0.5 text-[10px]">
-                      {captured.w.slice(0, 4).map((p, idx) => (
-                        <span key={idx} className="bg-slate-100 px-1 rounded text-slate-950 font-semibold">{p}</span>
-                      ))}
-                    </div>
-                    <span className="p-1 px-2 text-xs font-mono font-bold bg-slate-950 rounded-lg text-slate-400 border border-slate-800">
+                    <span className="p-1 px-2 text-[10px] sm:text-[11px] font-mono font-bold bg-slate-900 border border-slate-800 rounded-lg text-amber-500 shrink-0">
                       {formatTime(activeClocks.w)}
                     </span>
                   </div>
                 </div>
+
+                {/* Spectator display */}
+                {room && spectatorCount > 0 && (
+                  <div className="p-1.5 bg-blue-500/5 border border-blue-500/15 rounded-xl space-y-0.5 shrink-0 select-none">
+                    <span className="text-[9px] font-semibold text-blue-400 block">👀 يتابعنا الآن: ({spectatorCount} مشاهد)</span>
+                    <div className="flex flex-wrap gap-1 max-h-12 overflow-y-auto">
+                      {spectatorNames.map((name, idx) => (
+                        <span key={idx} className="text-[8px] bg-slate-950 border border-slate-800 px-1.5 py-0.5 rounded text-slate-300">{name}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Chats & Logs */}
+                <div className="flex-grow min-h-0 flex flex-col">
+                  <ChessChat
+                    roomId={currentRoomId || 'offline'}
+                    userId={user?.uid || 'guest'}
+                    userName={user?.displayName || 'زائر'}
+                    isOffline={!room}
+                  />
+                </div>
               </div>
 
-              {/* Online Spectator List Banner if available */}
-              {room && spectatorCount > 0 && (
-                <div className="p-3 bg-blue-500/5 border border-blue-500/10 rounded-xl space-y-1.5">
-                  <span className="text-[11px] font-semibold text-blue-400 block">👀 يتابع المباراة الآن ({spectatorCount} مشاهد):</span>
-                  <div className="flex flex-wrap gap-1.5 max-h-16 overflow-y-auto">
-                    {spectatorNames.map((name, idx) => (
-                      <span key={idx} className="text-[10px] bg-slate-950 border border-slate-800 px-2 py-0.5 rounded text-slate-300">{name}</span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Control Options (Resign) */}
-              <div className="pt-3 flex gap-2">
+              {/* Bottom option controls */}
+              <div className="flex gap-2 shrink-0">
                 {room && playerColor !== null && (
                   <button
                     id="btn_resign"
                     onClick={handleResign}
-                    className="w-full py-2 border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500 hover:text-white transition-all text-xs font-bold text-rose-400 rounded-xl"
+                    className="w-full py-1.5 border border-rose-500/35 bg-rose-500/10 hover:bg-rose-500 hover:text-white transition-all text-[10px] sm:text-[11px] font-bold text-rose-400 rounded-xl"
                   >
-                    🚩 إعلان الاستسلام والانسحاب
+                    🚩 انسحاب واستسلام
                   </button>
                 )}
               </div>
-
-              {/* Responsive Google Ads unit */}
-              <GoogleAd className="mt-4" />
             </div>
-
-            {/* Chat Module */}
-            <div className="flex-grow">
-              <ChessChat
-                roomId={currentRoomId || 'offline'}
-                userId={user?.uid || 'guest'}
-                userName={user?.displayName || 'زائر'}
-                isOffline={!room}
-              />
-            </div>
-          </section>
-        </main>
+          </div>
+        </div>
       ) : (
         /* 🏰 Main Lobby Dashboard Grid (Start Screen) */
         <main className="flex-grow max-w-5xl mx-auto w-full p-6 space-y-8 animate-fade-in">
@@ -1193,8 +1218,9 @@ function ChessAppContent() {
                         onClick={() => {
                           setGameMode('offline_ai');
                           setPlayerColor('w');
-                          game.reset();
-                          setFen(game.fen());
+                          const freshGame = new Chess();
+                          setGame(freshGame);
+                          setFen(freshGame.fen());
                           if (soundEnabled) audio.playStart();
                           triggerToast('بدأت المباراة ضد الذكاء الاصطناعي بوضع هجوم الأبيض! بالتوفيق.');
                         }}
@@ -1220,8 +1246,9 @@ function ChessAppContent() {
                         onClick={() => {
                           setGameMode('offline_pass_play');
                           setPlayerColor('w'); // white starts
-                          game.reset();
-                          setFen(game.fen());
+                          const freshGame = new Chess();
+                          setGame(freshGame);
+                          setFen(freshGame.fen());
                           if (soundEnabled) audio.playStart();
                           triggerToast('بدأت جولة اللعب والتمرير المحلي! تحد وتبارز.');
                         }}
